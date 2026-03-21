@@ -1,11 +1,11 @@
 ---
 name: clanker-discipline
-description: Discipline AI coding agents against state explosion, grab-bag models, and mutation ambiguity
+description: Catch the state bloat, loose models, and mutation confusion that AI coding agents produce
 ---
 
 # Clanker Discipline
 
-AI coding agents are good at local fixes and bad at respecting the total state surface of an app. Every bug looks like it wants one more flag. One more cached answer. One more special case. That is how you end up with a codebase that behaves like a boolean landfill.
+AI coding agents are good at local fixes and bad at respecting the total state surface of an app. Every bug looks like it wants one more flag. One more cached answer. One more special case. That is how a codebase turns into a boolean landfill — fields nobody reads, states nobody intended.
 
 This skill teaches you to catch and fix the patterns agents overproduce.
 
@@ -58,7 +58,7 @@ function getLatestAssistantMessage(events: SessionEvent[]) {
 }
 ```
 
-The flags disappeared. No mutation sites. The answer is computed from the events that already exist. The function is pure, testable, and obvious.
+The flags disappeared. The answer is computed from the events that already exist.
 
 ### Before: flags tracking what happened during a process
 
@@ -102,7 +102,7 @@ function deriveBackgroundTaskStatus(step: LoanStep): BackgroundTaskStatus {
 }
 ```
 
-The seven stored fields become two pure functions called from `finalizeSnapshot()`. Zero mutation sites, zero sync bugs.
+The seven stored fields become two pure functions called from `finalizeSnapshot()`, with no mutation sites to keep in sync.
 
 ### When NOT to derive
 
@@ -186,7 +186,17 @@ type PendingInteractiveState = {
 };
 ```
 
-The status goes `{status: 'open'}` to `undefined`. The `'completed'` variant is dead code that suggests a lifecycle that does not exist. Delete it.
+The status goes `{status: 'open'}` to `undefined`. The `'completed'` variant is dead code that suggests a lifecycle that does not exist.
+
+### After: delete the dead variant
+
+```ts
+type PendingInteractiveState = {
+  action: PendingInteractiveAction;
+  instanceId: string;
+  status: 'open';
+};
+```
 
 ### Before: grab-bag model
 
@@ -275,7 +285,7 @@ Or better: if you can derive one of them from existing state (see section 1), el
 
 ### Semantic functions
 
-Small, pure, self-describing. Take all inputs, return all outputs, no hidden effects. The name IS the documentation. Should be trivially unit-testable.
+Small, pure, self-describing. Take all inputs, return all outputs, no hidden effects. The name is the documentation. Should be unit-testable.
 
 ```ts
 function getAvailableTools(snapshot: SessionSnapshot): ToolName[] { ... }
@@ -511,7 +521,7 @@ test('footer is hidden for aborted runs', () => {
 });
 ```
 
-No mocking. No reproducing timing. No begging the runtime to hit the same interleaving. The reproduction artifact is just data. The bug is either in the events or in the pure function. Any model can one-shot this.
+No mocking, no timing reproduction. The artifact is data. The bug is in the events or the pure function.
 
 ---
 
