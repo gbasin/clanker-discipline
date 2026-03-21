@@ -5,7 +5,7 @@ A skill for hardening codebases against the state explosion, grab-bag models, an
 ## Install
 
 ```bash
-npx skills add usonia-dev/clanker-harden
+npx skills add gbasin/clanker-harden
 ```
 
 ## What it does
