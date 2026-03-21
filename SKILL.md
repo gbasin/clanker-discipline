@@ -60,53 +60,54 @@ function getLatestAssistantMessage(events: SessionEvent[]) {
 
 The flags disappeared. The answer is computed from the events that already exist.
 
-### Before: flags tracking what happened during a process
+### Before: flags tracking what happened during a pipeline
 
 ```ts
-type LoanState = {
+type OrderState = {
   // ...
-  tridWaitingPeriodSatisfied: boolean;
-  leWaitingPeriodSatisfied: boolean;
-  backgroundTasks: {
-    title: 'idle' | 'pending' | 'resolved';
-    insurance: 'idle' | 'pending' | 'resolved';
+  paymentCaptured: boolean;
+  inventoryReserved: boolean;
+  shippingLabelCreated: boolean;
+  backgroundChecks: {
+    fraud: 'idle' | 'pending' | 'resolved';
+    addressVerification: 'idle' | 'pending' | 'resolved';
   };
   consent: {
-    eSign: boolean;
-    blanketAuth: boolean;
-    biometric: boolean;
+    termsAccepted: boolean;
+    marketingOptIn: boolean;
+    ageVerified: boolean;
   };
 };
 ```
 
-Seven fields, all derivable from the current step and existing results.
+Eight fields, all derivable from the current step and existing results.
 
 ### After: derive in one place
 
 ```ts
-function deriveConsentState(step: LoanStep, toolResults: ToolResults): ConsentState {
+function deriveConsentState(step: OrderStep, results: StepResults): ConsentState {
   const stepIndex = STEPS.indexOf(step);
   return {
-    eSign: stepIndex >= STEPS.indexOf('BankConnect'),
-    blanketAuth: stepIndex >= STEPS.indexOf('BankConnect'),
-    biometric: stepIndex >= STEPS.indexOf('DocumentSigning')
-      || toolResults.identityVerification !== undefined,
+    termsAccepted: stepIndex >= STEPS.indexOf('Payment'),
+    marketingOptIn: stepIndex >= STEPS.indexOf('Payment'),
+    ageVerified: stepIndex >= STEPS.indexOf('Fulfillment')
+      || results.identityCheck !== undefined,
   };
 }
 
-function deriveBackgroundTaskStatus(step: LoanStep): BackgroundTaskStatus {
+function deriveBackgroundCheckStatus(step: OrderStep): CheckStatus {
   const stepIndex = STEPS.indexOf(step);
-  if (stepIndex < STEPS.indexOf('PropertyValuation')) return 'idle';
-  if (stepIndex < STEPS.indexOf('ClosingDisclosure')) return 'pending';
+  if (stepIndex < STEPS.indexOf('Payment')) return 'idle';
+  if (stepIndex < STEPS.indexOf('Shipping')) return 'pending';
   return 'resolved';
 }
 ```
 
-The seven stored fields become two pure functions called from `finalizeSnapshot()`, with no mutation sites to keep in sync.
+The eight stored fields become two pure functions called from `finalizeOrder()`, with no mutation sites to keep in sync.
 
 ### When NOT to derive
 
-- The domain genuinely has a state machine with ordered transitions. A loan origination step or a checkout phase is not a cached conclusion; it IS the state.
+- The domain genuinely has a state machine with ordered transitions. A checkout step or a deployment phase is not a cached conclusion; it IS the state.
 - A field contains temporal or external data that cannot be rederived: timestamps from async processes, API responses needed downstream.
 - The derivation would be more complex than the stored value.
 
@@ -119,43 +120,43 @@ Every optional field is a question the rest of the codebase must answer every ti
 ### Before: optional fields that shouldn't coexist
 
 ```ts
-type BrokerSyncState = {
-  status: 'idle' | 'pending' | 'resolved';
-  channel?: 'email' | 'sms';
-  contactName?: string;
-  requestedAt?: string;
-  resolvedAt?: string;
+type PaymentState = {
+  status: 'idle' | 'processing' | 'settled';
+  gateway?: 'stripe' | 'paypal';
+  transactionId?: string;
+  initiatedAt?: string;
+  settledAt?: string;
 };
 ```
 
-When `status` is `'idle'`, none of the other fields should exist. When it is `'pending'`, `channel` and `contactName` must exist. The type does not enforce this. Every consumer guesses.
+When `status` is `'idle'`, none of the other fields should exist. When it is `'processing'`, `gateway` and `transactionId` must exist. The type does not enforce this. Every consumer guesses.
 
 ### After: discriminated union
 
 ```ts
-type BrokerSyncState =
+type PaymentState =
   | { status: 'idle' }
-  | { status: 'pending'; channel: 'email' | 'sms'; contactName: string; requestedAt: string }
-  | { status: 'resolved'; channel: 'email' | 'sms'; contactName: string; resolvedAt: string };
+  | { status: 'processing'; gateway: 'stripe' | 'paypal'; transactionId: string; initiatedAt: string }
+  | { status: 'settled'; gateway: 'stripe' | 'paypal'; transactionId: string; settledAt: string };
 ```
 
-Now you cannot construct an `'idle'` state with a `contactName`. Consumers narrow on the discriminant and the compiler guarantees the fields are there.
+Now you cannot construct an `'idle'` state with a `transactionId`. Consumers narrow on the discriminant and the compiler guarantees the fields are there.
 
 ### Before: sentinel value in a union
 
 ```ts
-type PendingUserAction =
+type PendingAction =
   | 'none'
-  | 'broker-contact'
-  | 'consent'
-  | 'bank-connect';
+  | 'confirm-address'
+  | 'select-shipping'
+  | 'review-order';
 
-type LoanState = {
-  pendingUserAction: PendingUserAction;
+type OrderState = {
+  pendingAction: PendingAction;
 };
 
 // every consumer:
-if (state.pendingUserAction !== 'none') { ... }
+if (state.pendingAction !== 'none') { ... }
 ```
 
 `'none'` is not an action. It is the absence of one. The type lies.
@@ -163,24 +164,24 @@ if (state.pendingUserAction !== 'none') { ... }
 ### After: nullable
 
 ```ts
-type PendingUserAction =
-  | 'broker-contact'
-  | 'consent'
-  | 'bank-connect';
+type PendingAction =
+  | 'confirm-address'
+  | 'select-shipping'
+  | 'review-order';
 
-type LoanState = {
-  pendingUserAction: PendingUserAction | null;
+type OrderState = {
+  pendingAction: PendingAction | null;
 };
 
 // every consumer:
-if (state.pendingUserAction) { ... }
+if (state.pendingAction) { ... }
 ```
 
 ### Before: dead variant nobody uses
 
 ```ts
-type PendingInteractiveState = {
-  action: PendingInteractiveAction;
+type ModalState = {
+  view: ModalView;
   instanceId: string;
   status: 'open' | 'completed'; // 'completed' is never set
 };
@@ -191,8 +192,8 @@ The status goes `{status: 'open'}` to `undefined`. The `'completed'` variant is 
 ### After: delete the dead variant
 
 ```ts
-type PendingInteractiveState = {
-  action: PendingInteractiveAction;
+type ModalState = {
+  view: ModalView;
   instanceId: string;
   status: 'open';
 };
@@ -201,46 +202,47 @@ type PendingInteractiveState = {
 ### Before: grab-bag model
 
 ```ts
-type BorrowerProfile = {
-  firstName?: ProfileField<string>;
-  lastName?: ProfileField<string>;
-  dob?: ProfileField<string>;
-  ssnLast4?: ProfileField<string>;
-  email?: ProfileField<string>;
-  phone?: ProfileField<string>;
-  address?: ProfileField<string>;
-  employer?: ProfileField<string>;
-  jobTitle?: ProfileField<string>;
-  annualIncome?: ProfileField<number>;
-  propertyAddress?: ProfileField<string>;
-  purchasePrice?: ProfileField<number>;
-  // ... 12 more optional fields
+type UserProfile = {
+  firstName?: string;
+  lastName?: string;
+  dob?: string;
+  avatarUrl?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  company?: string;
+  jobTitle?: string;
+  timezone?: string;
+  preferredLanguage?: string;
+  billingAddress?: string;
+  cardLast4?: string;
+  // ... 10 more optional fields
 };
 ```
 
-24 optional fields. Every consumer does `profile.firstName?.value ?? DEFAULT_IDENTITY.firstName`. The model does not tell you which fields should exist at which point in the flow.
+20+ optional fields. Every consumer does `profile.firstName ?? defaults.firstName`. The model does not tell you which fields should exist at which point in onboarding.
 
 ### After: phased composition
 
 ```ts
-type IdentityProfile = {
-  firstName: ProfileField<string>;
-  lastName: ProfileField<string>;
-  dob: ProfileField<string>;
-  ssnLast4: ProfileField<string>;
+type IdentityInfo = {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  avatarUrl: string;
 };
 
-type ContactProfile = {
-  email: ProfileField<string>;
-  phone: ProfileField<string>;
-  address: ProfileField<string>;
+type ContactInfo = {
+  email: string;
+  phone: string;
+  address: string;
 };
 
-type BorrowerProfile = {
-  identity?: IdentityProfile;    // populated after credit pull
-  contact?: ContactProfile;      // populated after bank connect
-  employment?: EmploymentProfile; // populated after income verification
-  property?: PropertyProfile;    // populated after broker sync
+type UserProfile = {
+  identity?: IdentityInfo;   // populated after signup
+  contact?: ContactInfo;     // populated after email verification
+  employment?: WorkInfo;     // populated after profile completion
+  billing?: BillingInfo;     // populated after first purchase
 };
 ```
 
@@ -255,26 +257,26 @@ Values with identical shapes can represent different domain concepts.
 ### Before: unbranded twins
 
 ```ts
-type BackgroundTaskStatus = 'idle' | 'pending' | 'resolved';
-type ThirdPartyTaskStatus = 'idle' | 'pending' | 'resolved';
+type BuildStatus = 'idle' | 'pending' | 'resolved';
+type DeployStatus = 'idle' | 'pending' | 'resolved';
 ```
 
-These are identical. A function accepting `BackgroundTaskStatus` will happily take a `ThirdPartyTaskStatus` without complaint. If both exist in the same codebase, they should be distinct.
+These are identical. A function accepting `BuildStatus` will happily take a `DeployStatus` without complaint. If both exist in the same codebase, they should be distinct.
 
 ### After: prefixed or branded
 
 If the values are stored/serialized, prefix them:
 
 ```ts
-type BackgroundTaskStatus = 'bg-idle' | 'bg-pending' | 'bg-resolved';
-type ThirdPartyTaskStatus = 'tp-idle' | 'tp-pending' | 'tp-resolved';
+type BuildStatus = 'build-idle' | 'build-pending' | 'build-resolved';
+type DeployStatus = 'deploy-idle' | 'deploy-pending' | 'deploy-resolved';
 ```
 
 If the values are internal only, use a branded type:
 
 ```ts
-type BackgroundTaskStatus = ('idle' | 'pending' | 'resolved') & { readonly __brand: 'background' };
-type ThirdPartyTaskStatus = ('idle' | 'pending' | 'resolved') & { readonly __brand: 'thirdParty' };
+type BuildStatus = ('idle' | 'pending' | 'resolved') & { readonly __brand: 'build' };
+type DeployStatus = ('idle' | 'pending' | 'resolved') & { readonly __brand: 'deploy' };
 ```
 
 Or better: if you can derive one of them from existing state (see section 1), eliminate it entirely.
@@ -288,9 +290,9 @@ Or better: if you can derive one of them from existing state (see section 1), el
 Small, pure, self-describing. Take all inputs, return all outputs, no hidden effects. The name is the documentation. Should be unit-testable.
 
 ```ts
-function getAvailableTools(snapshot: SessionSnapshot): ToolName[] { ... }
-function shouldTreatAsBorrowerQuestion(text: string): boolean { ... }
-function deriveConsentState(step: LoanStep): ConsentState { ... }
+function getAvailableActions(order: OrderSnapshot): ActionName[] { ... }
+function isReturnEligible(item: LineItem, now: Date): boolean { ... }
+function deriveShippingOptions(address: Address, weight: number): ShippingRate[] { ... }
 ```
 
 ### Pragmatic functions
@@ -298,54 +300,52 @@ function deriveConsentState(step: LoanStep): ConsentState { ... }
 Orchestrators that compose semantic functions. Expected to change. Expected to be messy. Doc comments should describe surprising behavior, not restate the name.
 
 ```ts
-/** Skips live model call when last message is assistant (guided continuation). */
-async function streamAssistantTurn({ snapshot, messages, ... }) { ... }
+/** Retries with the backup gateway if the primary returns a soft decline. */
+async function processPayment({ order, gateway, ... }) { ... }
 ```
 
 ### Before: semantic function that became pragmatic
 
 ```ts
-// started as "apply a tool to a snapshot"
-// now it creates fixtures, mutates state, emits proofs, and transitions the state machine
-function applyTool(snapshot, toolName, args, occurredAt): ToolMutation {
-  switch (toolName) {
-    case 'pull_credit': {
-      const result = createCreditResult();           // fixture
-      snapshot.toolResults.credit = result;           // mutation
-      snapshot.borrowerProfile = setProfileField(...); // mutation
-      snapshot.borrowerProfile = setProfileField(...); // mutation
-      snapshot.borrowerProfile = setProfileField(...); // mutation
-      snapshot.loanState.substate = 'awaiting-user-action'; // mutation
-      clearInteractiveState(snapshot);                // side effect
-      const emitted = buildProofEventsForCredit(...); // proof emission
-      snapshot.proofEvents.push(...emitted);          // mutation
-      finalizeSnapshot(snapshot);                     // derivation
-      return { snapshot, output: result, proofEvents: emitted };
+// started as "handle a webhook event"
+// now it validates payloads, mutates state, sends notifications, and updates analytics
+function handleWebhook(state, eventType, payload, receivedAt): WebhookResult {
+  switch (eventType) {
+    case 'payment.captured': {
+      const receipt = buildReceipt(payload);            // data creation
+      state.order.paymentStatus = 'captured';           // mutation
+      state.order.receipt = receipt;                     // mutation
+      state.user.lastPurchaseAt = receivedAt;           // mutation
+      state.user.lifetimeSpend += receipt.amount;        // mutation
+      clearPendingAction(state);                         // side effect
+      const notifications = buildPaymentNotifs(state);   // notification
+      state.notifications.push(...notifications);        // mutation
+      recalculateDashboard(state);                       // derivation
+      return { state, output: receipt, notifications };
     }
-    // ... 16 more cases, same pattern
+    // ... 12 more cases, same pattern
   }
 }
 ```
 
-276 lines. Each case does three things interleaved: create data, mutate state, emit events.
+250+ lines. Each case does three things interleaved: create data, mutate state, produce side effects.
 
 ### After: composed from semantic functions
 
 ```ts
-function applyCreditPull(snapshot: SessionSnapshot, occurredAt: string): ToolMutation {
-  const result = createCreditResult();
-  const updatedProfile = applyCreditToProfile(snapshot.borrowerProfile, result);
-  const proofEvents = buildProofEventsForCredit(snapshot, result, occurredAt);
+function handlePaymentCaptured(state: AppState, payload: PaymentPayload, receivedAt: string): WebhookResult {
+  const receipt = buildReceipt(payload);
+  const updatedUser = applyPurchaseToUser(state.user, receipt, receivedAt);
+  const notifications = buildPaymentNotifs(state, receipt);
 
   return {
-    snapshot: {
-      ...snapshot,
-      toolResults: { ...snapshot.toolResults, credit: result },
-      borrowerProfile: updatedProfile,
-      proofEvents: [...snapshot.proofEvents, ...proofEvents],
+    state: {
+      ...state,
+      order: { ...state.order, paymentStatus: 'captured', receipt },
+      user: updatedUser,
     },
-    output: result,
-    proofEvents,
+    output: receipt,
+    notifications,
   };
 }
 ```
@@ -361,10 +361,10 @@ If a function mutates its input, make that obvious. Never do both.
 ### Before: mutate and return the same reference
 
 ```ts
-function withInteractiveState(snapshot: SessionSnapshot, action: string): SessionSnapshot {
-  snapshot.loanState.pendingUserAction = action;    // mutates input
-  snapshot.loanState.pendingInteractiveState = { ... }; // mutates input
-  return snapshot; // returns the same object
+function withPendingAction(state: AppState, action: string): AppState {
+  state.pendingAction = action;          // mutates input
+  state.actionStartedAt = Date.now();    // mutates input
+  return state; // returns the same object
 }
 ```
 
@@ -372,22 +372,22 @@ Does the caller use the return value or the original? Both point to the same obj
 
 ### After: pick one
 
-Option A -- mutate, return void:
+Option A — mutate, return void:
 
 ```ts
-function applyInteractiveState(snapshot: SessionSnapshot, action: string): void {
-  snapshot.loanState.pendingUserAction = action;
-  snapshot.loanState.pendingInteractiveState = { ... };
+function applyPendingAction(state: AppState, action: string): void {
+  state.pendingAction = action;
+  state.actionStartedAt = Date.now();
 }
 ```
 
-Option B -- clone, return new:
+Option B — clone, return new:
 
 ```ts
-function withInteractiveState(snapshot: SessionSnapshot, action: string): SessionSnapshot {
-  const next = structuredClone(snapshot);
-  next.loanState.pendingUserAction = action;
-  next.loanState.pendingInteractiveState = { ... };
+function withPendingAction(state: AppState, action: string): AppState {
+  const next = structuredClone(state);
+  next.pendingAction = action;
+  next.actionStartedAt = Date.now();
   return next;
 }
 ```
@@ -450,18 +450,18 @@ The timer still exists but nothing outside the closure can touch it. It cannot e
 
 When you have a long chain of if-statements that each return a similar shape, the logic is a lookup table encoded as code. Convert it to data.
 
-### Before: 191-line if-chain
+### Before: long if-chain
 
 ```ts
-function getCurrentStepDescriptor(snapshot: SessionSnapshot): StepDescriptor | null {
-  if (!snapshot.borrowerProfile.brokerOrAgentContact) {
-    return { tone: 'action', title: 'Share your agent contact', detail: '...' };
+function getStepDescriptor(state: WizardState): StepDescriptor | null {
+  if (!state.profile.email) {
+    return { tone: 'action', title: 'Enter your email', detail: '...' };
   }
-  if (!snapshot.loanState.consent.eSign) {
-    return { tone: 'action', title: 'Review authorization', detail: '...' };
+  if (!state.emailVerified) {
+    return { tone: 'waiting', title: 'Check your inbox', detail: '...' };
   }
-  if (snapshot.loanState.step === 'BankConnect') {
-    return { tone: 'action', title: 'Connect your bank', detail: '...' };
+  if (state.step === 'SetPassword') {
+    return { tone: 'action', title: 'Create a password', detail: '...' };
   }
   // ... 15 more branches
 }
@@ -471,26 +471,26 @@ function getCurrentStepDescriptor(snapshot: SessionSnapshot): StepDescriptor | n
 
 ```ts
 const STEP_DESCRIPTORS: Array<{
-  match: (s: SessionSnapshot) => boolean;
+  match: (s: WizardState) => boolean;
   descriptor: StepDescriptor;
 }> = [
   {
-    match: (s) => !s.borrowerProfile.brokerOrAgentContact,
-    descriptor: { tone: 'action', title: 'Share your agent contact', detail: '...' },
+    match: (s) => !s.profile.email,
+    descriptor: { tone: 'action', title: 'Enter your email', detail: '...' },
   },
   {
-    match: (s) => !s.loanState.consent.eSign,
-    descriptor: { tone: 'action', title: 'Review authorization', detail: '...' },
+    match: (s) => !s.emailVerified,
+    descriptor: { tone: 'waiting', title: 'Check your inbox', detail: '...' },
   },
   {
-    match: (s) => s.loanState.step === 'BankConnect',
-    descriptor: { tone: 'action', title: 'Connect your bank', detail: '...' },
+    match: (s) => s.step === 'SetPassword',
+    descriptor: { tone: 'action', title: 'Create a password', detail: '...' },
   },
   // data, not code
 ];
 
-function getCurrentStepDescriptor(snapshot: SessionSnapshot): StepDescriptor | null {
-  return STEP_DESCRIPTORS.find(({ match }) => match(snapshot))?.descriptor ?? null;
+function getStepDescriptor(state: WizardState): StepDescriptor | null {
+  return STEP_DESCRIPTORS.find(({ match }) => match(state))?.descriptor ?? null;
 }
 ```
 
