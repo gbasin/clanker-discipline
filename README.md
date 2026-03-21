@@ -1,11 +1,11 @@
-# clanker-harden
+# clanker-discipline
 
-A skill for hardening codebases against the state explosion, grab-bag models, and mutation ambiguity that AI coding agents naturally produce.
+Discipline AI coding agents against state explosion, grab-bag models, and mutation ambiguity.
 
 ## Install
 
 ```bash
-npx skills add gbasin/clanker-harden
+npx skills add gbasin/clanker-discipline
 ```
 
 ## What it does

@@ -1,9 +1,9 @@
 ---
-name: clanker-hardening
-description: Harden code against the state explosion, grab-bag models, and mutation ambiguity that AI coding agents naturally produce
+name: clanker-discipline
+description: Discipline AI coding agents against state explosion, grab-bag models, and mutation ambiguity
 ---
 
-# Clanker Hardening
+# Clanker Discipline
 
 AI coding agents are good at local fixes and bad at respecting the total state surface of an app. Every bug looks like it wants one more flag. One more cached answer. One more special case. That is how you end up with a codebase that behaves like a boolean landfill.
 
