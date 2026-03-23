@@ -7,6 +7,8 @@ description: Catches state bloat, grab-bag models, and mutation ambiguity from A
 
 Apply these rules when writing or reviewing state types, data models, and functions that manage application state. Agents tend to add flags, optional fields, and special cases that compound into state nobody intended — catch that before it lands.
 
+When you find violations, refactor fully. The goal is clean, maintainable code, not minimal diffs. Rip out the flags, reshape the types, restructure the functions. A bigger diff now is better than layering workarounds that compound later.
+
 ---
 
 ## 1. Derive, don't store
