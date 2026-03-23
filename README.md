@@ -23,4 +23,4 @@ AI coding agents overproduce state. Every bug gets one more flag. Every feature 
 
 ## Credits
 
-Combines ideas from [theswerd/aicode](https://github.com/theswerd/aicode) (self-documenting code) and [swyxio's event sourcing post](https://x.com/niclofreon/status/1902782543620178324) on combating agent state explosion.
+Combines ideas from [theswerd/aicode](https://github.com/theswerd/aicode) ([self-documenting code](https://github.com/theswerd/aicode/blob/main/skills/self-documenting-code/SKILL.md)) and [swyxio's event sourcing post](https://x.com/niclofreon/status/1902782543620178324) on combating agent state explosion.
