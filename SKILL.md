@@ -1,17 +1,17 @@
 ---
 name: clanker-discipline
-description: Catch the state bloat, loose models, and mutation confusion that AI coding agents produce
+description: Catches state bloat, grab-bag models, and mutation ambiguity from AI coding agents. Use when reviewing state types, boolean flags, optional-field models, or mutable data patterns.
 ---
 
 # Clanker Discipline
 
-AI coding agents are good at local fixes and bad at respecting the total state surface of an app. Every bug looks like it wants one more flag. One more cached answer. One more special case. That is how a codebase turns into a boolean landfill — fields nobody reads, states nobody intended.
+Apply these rules when writing or reviewing state types, data models, and functions that manage application state. Agents tend to add flags, optional fields, and special cases that compound into state nobody intended — catch that before it lands.
 
 ---
 
 ## 1. Derive, don't store
 
-Every boolean you add doubles the theoretical state space. When a value can be derived from data you already have, do not store it.
+Every boolean you add doubles the theoretical state space. When a value can be derived from data you already have, do not store it. The best source to derive from is an event stream: a log of what happened.
 
 ### Before: cached flags
 
@@ -33,7 +33,7 @@ function shouldShowFooter(state: ThreadState): boolean {
 }
 ```
 
-Four fields to answer one question. And somewhere else, four mutation sites keeping them in sync.
+Four fields to answer one question, with four mutation sites elsewhere keeping them in sync.
 
 ### After: derive from evidence
 
@@ -45,7 +45,7 @@ function shouldShowFooter(events: SessionEvent[]): boolean {
 }
 ```
 
-The flags disappeared. The answer is computed from the events that already exist.
+The answer is now computed from events that already exist.
 
 ### When NOT to derive
 
@@ -70,13 +70,18 @@ class Writer {
 function createDebouncedAction(callback: () => void, delayMs = 300) {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   return {
-    trigger() { clearTimeout(timeout!); timeout = setTimeout(() => { timeout = null; callback(); }, delayMs); },
-    clear() { if (timeout) { clearTimeout(timeout); timeout = null; } },
+    trigger() {
+      clearTimeout(timeout!);
+      timeout = setTimeout(() => { timeout = null; callback(); }, delayMs);
+    },
+    clear() {
+      if (timeout) { clearTimeout(timeout); timeout = null; }
+    },
   };
 }
 ```
 
-Nothing outside the closure can touch the timer. It cannot expand the state space of anything else.
+Nothing outside the closure can touch the timer.
 
 ### The debugging payoff
 
@@ -89,7 +94,7 @@ test('footer is hidden for aborted runs', () => {
 });
 ```
 
-No mocking, no timing reproduction. The bug is in the events or in the pure function.
+No mocking or timing reproduction. The bug is in the events or in the pure function.
 
 ---
 
@@ -168,15 +173,14 @@ If a type has a variant that is never constructed, delete it. A `status: 'open' 
 
 ---
 
-## 3. Keep functions honest
+## 3. Enforce function contracts
 
-### Semantic vs. pragmatic
+### Never add side effects to a pure function
 
-Semantic functions are small, pure, and self-describing. They take all inputs, return all outputs, and have no hidden effects. The name is the documentation.
+When a pure function quietly gains a side effect, every callsite inherits behavior it did not ask for. If a function needs side effects, extract them into a separate orchestrator.
 
-Pragmatic functions are orchestrators. They compose semantic functions and contain messy domain glue. Doc comments on pragmatic functions should describe surprising behavior, not restate the name.
-
-The break happens when a semantic function silently becomes pragmatic — someone adds a side effect for convenience, and other callsites inherit behavior they did not intend.
+- **Semantic functions** are small, pure, and self-describing. All inputs in, all outputs out, no hidden effects.
+- **Pragmatic functions** are orchestrators. They compose semantic functions and contain messy domain glue.
 
 ### Before: semantic function that grew into a pragmatic one
 
@@ -241,6 +245,54 @@ function withPendingAction(state: AppState, action: string): AppState {
 
 ---
 
+## 4. Data over procedure
+
+When a long if-chain returns a similar shape from every branch, the logic is a lookup table encoded as code. Convert it to data.
+
+### Before: if-chain
+
+```ts
+function getStepInfo(step: string): StepInfo | null {
+  if (step === 'verify-email') {
+    return { tone: 'action', title: 'Verify your email', detail: 'Check your inbox' };
+  }
+  if (step === 'add-payment') {
+    return { tone: 'action', title: 'Add payment method', detail: 'Enter card details' };
+  }
+  if (step === 'review-order') {
+    return { tone: 'confirm', title: 'Review your order', detail: 'Check totals' };
+  }
+  // ... 10 more branches
+  return null;
+}
+```
+
+### After: declarative table
+
+```ts
+const STEP_INFO: Array<{
+  match: (step: string) => boolean;
+  info: StepInfo;
+}> = [
+  { match: (s) => s === 'verify-email', info: { tone: 'action', title: 'Verify your email', detail: 'Check your inbox' } },
+  { match: (s) => s === 'add-payment',  info: { tone: 'action', title: 'Add payment method', detail: 'Enter card details' } },
+  { match: (s) => s === 'review-order', info: { tone: 'confirm', title: 'Review your order', detail: 'Check totals' } },
+  // data, not code
+];
+
+function getStepInfo(step: string): StepInfo | null {
+  return STEP_INFO.find(({ match }) => match(step))?.info ?? null;
+}
+```
+
+Easier to scan, extend, and test. An agent adding a new step adds a data entry, not a branch in a control flow.
+
+### When NOT to convert
+
+If branches have different control flow — not just different return values — keep them as code. A table maps inputs to outputs; it cannot express "call X then conditionally call Y."
+
+---
+
 ## Checklist
 
 When reviewing code (yours or an agent's):
@@ -251,4 +303,5 @@ When reviewing code (yours or an agent's):
 - [ ] Are there identical type aliases for different domain concepts? Brand or eliminate.
 - [ ] Does any function both mutate its input and return it? Pick one contract.
 - [ ] Has a semantic function grown side effects? Extract them.
+- [ ] Is there an if-chain where every branch returns a similar shape? Make it a table.
 - [ ] Are there dead type variants never constructed? Delete them.

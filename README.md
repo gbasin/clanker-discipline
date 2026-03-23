@@ -10,16 +10,12 @@ npx skills add gbasin/clanker-discipline
 
 ## What it does
 
-AI coding agents overproduce state. Every bug gets one more flag. Every feature gets one more optional field. This skill teaches agents to:
+AI coding agents overproduce state — every bug gets one more flag, every feature one more optional field. This skill teaches agents to:
 
-1. **Store evidence, not conclusions** — derive state from events instead of caching it in flags
-2. **Make wrong states impossible** — discriminated unions over optional field bags
-3. **Brand primitives** — prevent type-identical domain concepts from being interchangeable
-4. **Know what your functions are** — keep semantic functions pure, let pragmatic functions be messy
-5. **Pick a mutation contract** — mutate-and-return-void or clone-and-return-new, never both
-6. **Encapsulate state** — closures over class fields, local over global
-7. **Data over procedure** — lookup tables over if-chains
-8. **Debug with data** — export events, write pure-function tests, no mocking
+1. **Derive, don't store** — compute state from existing data instead of caching it in flags; encapsulate what you can't eliminate
+2. **Make wrong states impossible** — discriminated unions, null over sentinels, branded primitives, phased composition
+3. **Enforce function contracts** — never add side effects to a pure function; pick a mutation contract (mutate+void or clone+return)
+4. **Data over procedure** — lookup tables over if-chains
 
 ## Credits
 
