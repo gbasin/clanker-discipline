@@ -298,6 +298,7 @@ If branches have different control flow — not just different return values —
 When reviewing code (yours or an agent's):
 
 - [ ] Can any new field be derived from existing state? Derive it.
+- [ ] Is mutable state visible beyond its minimal scope? Trap it in a closure.
 - [ ] Do any models allow field combinations that should be impossible? Discriminated union.
 - [ ] Are there sentinel values (`'none'`, `'unknown'`, `-1`) where `null` would work? Use null.
 - [ ] Are there identical type aliases for different domain concepts? Brand or eliminate.
