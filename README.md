@@ -5,7 +5,7 @@ Discipline AI coding agents against state explosion, grab-bag models, and mutati
 ## Install
 
 ```bash
-npx skills add gbasin/clanker-discipline -g
+npx skills add gbasin/clanker-discipline --all -g
 ```
 
 ## What it does
